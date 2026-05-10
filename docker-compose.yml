@@ -1,0 +1,28 @@
+services:
+  # ── Base de datos documental (mongodb) ─────────────────────
+  mongodb:
+    image: mongo:7
+    env_file: .env
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Autenticación y usuarios (auth-service) ───────────────
+  auth-service:
+    build: ./auth-service
+    env_file: .env
+    ports:
+      - "8001:8000"
+    restart: on-failure
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+volumes:
+  mongo_data:
