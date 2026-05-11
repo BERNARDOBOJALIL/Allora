@@ -13,6 +13,35 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Cache, presencia y contadores efímeros (redis) ─────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Bus de eventos para microservicios (rabbitmq) ──────────
+  rabbitmq:
+    image: rabbitmq:3-management
+    env_file: .env
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ── Autenticación y usuarios (auth-service) ───────────────
   auth-service:
     build: ./services/auth-service
@@ -29,6 +58,29 @@ services:
       mongodb:
         condition: service_healthy
 
+  # ── Mensajería entre usuarios (chat-service) ───────────────
+  # Persiste conversaciones en MongoDB, usa Redis para presencia/unread
+  # y publica eventos de dominio en RabbitMQ: conversation.created,
+  # message.sent, messages.read, user.online y user.offline.
+  chat-service:
+    build: ./services/chat-service
+    env_file: .env
+    ports:
+      - "8002:8000"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   # ── Puerta de entrada principal (api-gateway) ─────────────
   api-gateway:
     build:
@@ -39,12 +91,17 @@ services:
       - "8000:8000"
     environment:
       AUTH_SERVICE_URL: http://auth-service:8000
+      CHAT_SERVICE_URL: http://chat-service:8000
       JWT_ALGORITHM: RS256
       JWT_ISSUER: auth-service
     restart: on-failure
     depends_on:
       auth-service:
         condition: service_healthy
+      chat-service:
+        condition: service_healthy
 
 volumes:
   mongo_data:
+  redis_data:
+  rabbitmq_data:
