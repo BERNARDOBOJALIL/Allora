@@ -6,8 +6,12 @@ class Settings(BaseSettings):
     mongo_db_name: str = "allora_auth"
 
     jwt_secret: str = "change_this_secret"
-    jwt_algorithm: str = "HS256"
+    jwt_algorithm: str = "RS256"
     jwt_expire_minutes: int = 60
+    jwt_issuer: str = "auth-service"
+    jwt_key_id: str = "allora-auth-key-1"
+    jwt_private_key: str | None = None
+    jwt_public_key: str | None = None
 
     refresh_token_expire_days: int = 30
     verification_code_expire_minutes: int = 10

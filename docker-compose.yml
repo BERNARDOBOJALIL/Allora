@@ -15,13 +15,35 @@ services:
 
   # ── Autenticación y usuarios (auth-service) ───────────────
   auth-service:
-    build: ./auth-service
+    build: ./services/auth-service
     env_file: .env
     ports:
       - "8001:8000"
     restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       mongodb:
+        condition: service_healthy
+
+  # ── Puerta de entrada principal (api-gateway) ─────────────
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+    container_name: api-gateway
+    env_file: .env
+    ports:
+      - "8000:8000"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      JWT_ALGORITHM: RS256
+      JWT_ISSUER: auth-service
+    restart: on-failure
+    depends_on:
+      auth-service:
         condition: service_healthy
 
 volumes:

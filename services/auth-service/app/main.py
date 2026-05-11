@@ -34,6 +34,7 @@ from app.security import (
     generate_verification_code,
     hash_password,
     hash_secret,
+    get_jwks,
     normalize_email,
     normalize_phone,
     verify_password,
@@ -158,6 +159,7 @@ async def issue_token_pair(db: AsyncIOMotorDatabase, user: dict) -> TokenRespons
         user_id=user_id,
         role=user.get("role", Role.USER.value),
         plan=user.get("plan", Plan.FREE.value),
+        email=user.get("email"),
     )
     refresh_token = await issue_refresh_token(db, user_id)
     return TokenResponse(
@@ -234,6 +236,11 @@ async def mark_code_as_used(db: AsyncIOMotorDatabase, code_id: ObjectId) -> None
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"service": "auth-service", "status": "ok"}
+
+
+@app.get("/auth/.well-known/jwks.json")
+async def jwks() -> dict[str, list[dict[str, str]]]:
+    return get_jwks()
 
 
 @app.post(
@@ -349,6 +356,7 @@ async def refresh_token(
         user_id=str(user["_id"]),
         role=user.get("role", Role.USER.value),
         plan=user.get("plan", Plan.FREE.value),
+        email=user.get("email"),
     )
     return AccessTokenResponse(access_token=access_token, token_type="bearer", expires_in=expires_in)
 
