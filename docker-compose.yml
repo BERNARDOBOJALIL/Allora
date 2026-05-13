@@ -1,6 +1,73 @@
 version: "3.9"
 
 services:
+  # ── MongoDB (required by auth-service) ──
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    networks:
+      - allora-network
+    restart: unless-stopped
+
+  # ── Redis cache (required by api-gateway) ──
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - allora-network
+    restart: unless-stopped
+
+  # ── Autenticación y usuarios (auth-service) ───────────────
+  auth-service:
+    build: ./services/auth-service
+    container_name: auth-service
+    env_file: .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - allora-network
+    depends_on:
+      - mongodb
+      - redis
+
+  # ── Puerta de entrada principal (api-gateway) ─────────────
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    env_file: .env
+    ports:
+      - "8000:8000"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      JWT_ALGORITHM: RS256
+      JWT_ISSUER: auth-service
+      REDIS_URL: redis://redis:6379/0
+      USERS_SERVICE_URL: http://user-service:8005
+      CHAT_SERVICE_URL: http://chat-service:8001
+      MATCHES_SERVICE_URL: http://match-service:8002
+      NOTIFICATIONS_SERVICE_URL: http://notification-service:8004
+    restart: unless-stopped
+    networks:
+      - allora-network
+    depends_on:
+      auth-service:
+        condition: service_healthy
+
   # Location Service - Real-time location tracking
   location-service:
     build:
@@ -27,37 +94,8 @@ services:
     networks:
       - allora-network
     restart: unless-stopped
-
-  # API Gateway (placeholder)
-  api-gateway:
-    build:
-      context: ./services/api-gateway
-      dockerfile: Dockerfile
-    container_name: api-gateway
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ── Autenticación y usuarios (auth-service) ───────────────
-  auth-service:
-    build: ./services/auth-service
-    env_file: .env
-    ports:
-      - "8000:8000"
-      - "8001:8000"
-    restart: on-failure
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     depends_on:
-      location-service:
-        condition: service_healthy
-    networks:
-      - allora-network
-    restart: unless-stopped
+      - auth-service
 
   # Chat Service (placeholder)
   chat-service:
@@ -110,23 +148,6 @@ services:
 networks:
   allora-network:
     driver: bridge
-
-  # ── Puerta de entrada principal (api-gateway) ─────────────
-  api-gateway:
-    build:
-      context: ./services/api-gateway
-    container_name: api-gateway
-    env_file: .env
-    ports:
-      - "8000:8000"
-    environment:
-      AUTH_SERVICE_URL: http://auth-service:8000
-      JWT_ALGORITHM: RS256
-      JWT_ISSUER: auth-service
-    restart: on-failure
-    depends_on:
-      auth-service:
-        condition: service_healthy
 
 volumes:
   mongo_data:
