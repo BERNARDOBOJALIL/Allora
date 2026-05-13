@@ -34,8 +34,24 @@ services:
       context: ./services/api-gateway
       dockerfile: Dockerfile
     container_name: api-gateway
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Autenticación y usuarios (auth-service) ───────────────
+  auth-service:
+    build: ./services/auth-service
+    env_file: .env
     ports:
       - "8000:8000"
+      - "8001:8000"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       location-service:
         condition: service_healthy
@@ -94,3 +110,23 @@ services:
 networks:
   allora-network:
     driver: bridge
+
+  # ── Puerta de entrada principal (api-gateway) ─────────────
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+    container_name: api-gateway
+    env_file: .env
+    ports:
+      - "8000:8000"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      JWT_ALGORITHM: RS256
+      JWT_ISSUER: auth-service
+    restart: on-failure
+    depends_on:
+      auth-service:
+        condition: service_healthy
+
+volumes:
+  mongo_data:
