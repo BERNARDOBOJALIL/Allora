@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from datetime import datetime
 from ..models import (
     HealthResponse,
@@ -10,6 +10,7 @@ from ..models import (
 from ..logger import setup_logger
 from ..websocket_manager import ConnectionManager
 from ..room_manager import RoomManager
+from ..auth import resolve_authenticated_user
 
 router = APIRouter()
 logger = setup_logger(__name__)
@@ -54,24 +55,32 @@ async def get_active_rooms():
 
 
 @router.post("/checkin")
-async def checkin(request: CheckinRequest):
+async def checkin(
+    request: CheckinRequest,
+    authorization: str | None = Header(default=None),
+):
     """Check in a user to a room."""
     try:
+        authenticated_user = resolve_authenticated_user(request.user_id, authorization)
+
         # Add user to room via room manager
-        room_manager.add_user_to_room(request.room_id, request.user_id)
+        room_manager.add_user_to_room(request.room_id, authenticated_user.user_id)
 
         # Add user to room via connection manager
-        connection_manager.add_user_to_room(request.user_id, request.room_id)
+        connection_manager.add_user_to_room(authenticated_user.user_id, request.room_id)
 
         # Notify other users in the room
-        await connection_manager.notify_user_joined(request.user_id, request.room_id)
+        await connection_manager.notify_user_joined(authenticated_user.user_id, request.room_id)
 
-        logger.info(f"User {request.user_id} checked in to room {request.room_id}")
+        logger.info(
+            f"User {authenticated_user.user_id} checked in to room {request.room_id}"
+        )
 
         return {
             "status": "success",
-            "message": f"User {request.user_id} checked in to room {request.room_id}",
+            "message": f"User {authenticated_user.user_id} checked in to room {request.room_id}",
             "timestamp": datetime.utcnow().isoformat(),
+            "authenticated": authenticated_user.authenticated,
         }
     except Exception as e:
         logger.error(f"Check-in error: {str(e)}")
@@ -79,24 +88,32 @@ async def checkin(request: CheckinRequest):
 
 
 @router.post("/checkout")
-async def checkout(request: CheckoutRequest):
+async def checkout(
+    request: CheckoutRequest,
+    authorization: str | None = Header(default=None),
+):
     """Check out a user from a room."""
     try:
+        authenticated_user = resolve_authenticated_user(request.user_id, authorization)
+
         # Remove user from room via room manager
-        room_manager.remove_user_from_room(request.room_id, request.user_id)
+        room_manager.remove_user_from_room(request.room_id, authenticated_user.user_id)
 
         # Remove user from room via connection manager
-        connection_manager.remove_user_from_room(request.user_id)
+        connection_manager.remove_user_from_room(authenticated_user.user_id)
 
         # Notify other users in the room
-        await connection_manager.notify_user_left(request.user_id, request.room_id)
+        await connection_manager.notify_user_left(authenticated_user.user_id, request.room_id)
 
-        logger.info(f"User {request.user_id} checked out from room {request.room_id}")
+        logger.info(
+            f"User {authenticated_user.user_id} checked out from room {request.room_id}"
+        )
 
         return {
             "status": "success",
-            "message": f"User {request.user_id} checked out from room {request.room_id}",
+            "message": f"User {authenticated_user.user_id} checked out from room {request.room_id}",
             "timestamp": datetime.utcnow().isoformat(),
+            "authenticated": authenticated_user.authenticated,
         }
     except Exception as e:
         logger.error(f"Check-out error: {str(e)}")

@@ -54,12 +54,12 @@ class RoomsResponse(BaseModel):
 class CheckinRequest(BaseModel):
     """Check-in request."""
 
-    user_id: str
+    user_id: str | None = None
     room_id: str
 
 
 class CheckoutRequest(BaseModel):
     """Check-out request."""
 
-    user_id: str
+    user_id: str | None = None
     room_id: str

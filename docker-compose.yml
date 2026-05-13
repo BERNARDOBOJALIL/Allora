@@ -15,6 +15,9 @@ services:
       - HOST=0.0.0.0
       - PORT=8003
       - DEBUG=False
+      - AUTH_JWT_SECRET=change_this_secret
+      - AUTH_JWT_ALGORITHM=HS256
+      - AUTH_SERVICE_URL=http://auth-service:8000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/api/v1/health"]
       interval: 30s

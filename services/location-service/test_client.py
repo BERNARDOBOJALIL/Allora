@@ -8,9 +8,17 @@ and send location updates.
 
 import asyncio
 import json
+import os
 import websockets
 from datetime import datetime
 import random
+from urllib.parse import urlencode
+
+
+BASE_URL = os.getenv("LOCATION_SERVICE_URL", "http://localhost:8003")
+WS_BASE_URL = os.getenv("LOCATION_WS_URL", "ws://localhost:8003")
+AUTH_TOKEN = os.getenv("AUTH_TOKEN")
+AUTH_USER_ID = os.getenv("AUTH_USER_ID")
 
 
 async def test_user(user_id: str, room_id: str, num_updates: int = 5):
@@ -22,7 +30,8 @@ async def test_user(user_id: str, room_id: str, num_updates: int = 5):
         room_id: Room to join
         num_updates: Number of location updates to send
     """
-    uri = f"ws://localhost:8003/ws/{user_id}"
+    query = f"?{urlencode({'token': AUTH_TOKEN})}" if AUTH_TOKEN else ""
+    uri = f"{WS_BASE_URL}/ws/{user_id}{query}"
 
     try:
         async with websockets.connect(uri) as websocket:
@@ -65,26 +74,28 @@ async def test_rest_endpoints():
     """Test REST endpoints."""
     import httpx
 
-    base_url = "http://localhost:8003/api/v1"
+    base_url = f"{BASE_URL}/api/v1"
+    headers = {"Authorization": f"Bearer {AUTH_TOKEN}"} if AUTH_TOKEN else None
+    target_user_id = AUTH_USER_ID or "user1"
 
     async with httpx.AsyncClient() as client:
         print("\n=== Testing REST Endpoints ===\n")
 
         # Health check
         print("GET /health")
-        response = await client.get(f"{base_url}/health")
+        response = await client.get(f"{base_url}/health", headers=headers)
         print(f"Status: {response.status_code}")
         print(f"Response: {response.json()}\n")
 
         # Get users
         print("GET /users")
-        response = await client.get(f"{base_url}/users")
+        response = await client.get(f"{base_url}/users", headers=headers)
         print(f"Status: {response.status_code}")
         print(f"Response: {response.json()}\n")
 
         # Get rooms
         print("GET /rooms")
-        response = await client.get(f"{base_url}/rooms")
+        response = await client.get(f"{base_url}/rooms", headers=headers)
         print(f"Status: {response.status_code}")
         print(f"Response: {response.json()}\n")
 
@@ -92,7 +103,8 @@ async def test_rest_endpoints():
         print("POST /checkin")
         response = await client.post(
             f"{base_url}/checkin",
-            json={"user_id": "user1", "room_id": "room1"},
+            headers=headers,
+            json={"user_id": target_user_id, "room_id": "room1"},
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {response.json()}\n")
@@ -101,7 +113,8 @@ async def test_rest_endpoints():
         print("POST /checkout")
         response = await client.post(
             f"{base_url}/checkout",
-            json={"user_id": "user1", "room_id": "room1"},
+            headers=headers,
+            json={"user_id": target_user_id, "room_id": "room1"},
         )
         print(f"Status: {response.status_code}")
         print(f"Response: {response.json()}\n")
@@ -127,14 +140,15 @@ async def main():
 
     tasks = []
 
-    # Create 3 users in the same room
-    for i in range(1, 4):
-        user_id = f"user{i}"
-        room_id = "room1"
-        task = test_user(user_id, room_id, num_updates=3)
-        tasks.append(task)
+    if AUTH_TOKEN and AUTH_USER_ID:
+        # Authenticated mode: one token maps to one WebSocket identity.
+        tasks.append(test_user(AUTH_USER_ID, "room1", num_updates=3))
+    else:
+        # Anonymous/demo mode: simulate three concurrent users.
+        for i in range(1, 4):
+            user_id = f"user{i}"
+            tasks.append(test_user(user_id, "room1", num_updates=3))
 
-    # Run all user tasks concurrently
     await asyncio.gather(*tasks)
 
     print("\n" + "=" * 60)

@@ -314,6 +314,9 @@ websocat ws://localhost:8003/ws/user1
 | `HOST` | 0.0.0.0 | Server host |
 | `PORT` | 8003 | Server port |
 | `DEBUG` | False | Debug mode |
+| `AUTH_JWT_SECRET` | change_this_secret | Shared secret used to validate auth-service tokens |
+| `AUTH_JWT_ALGORITHM` | HS256 | JWT algorithm used by auth-service |
+| `AUTH_SERVICE_URL` | http://auth-service:8000 | Auth service base URL for future remote checks |
 
 ### Create `.env` file
 ```bash
@@ -342,6 +345,28 @@ Logs include:
 - Event type
 - Message
 - Error stack trace (if applicable)
+
+## Auth Integration
+
+`location-service` now links each location/session to the authenticated user ID from `auth-service`.
+
+- REST endpoints accept a Bearer token in `Authorization`.
+- `POST /api/v1/checkin` and `POST /api/v1/checkout` can use the token to derive `user_id` automatically.
+- The WebSocket endpoint supports `?token=...` or `Authorization: Bearer ...` and validates that the token `sub` matches the path user id.
+
+Example WebSocket URL:
+```text
+ws://localhost:8003/ws/user123?token=<access_token>
+```
+
+Example REST request:
+```http
+POST /api/v1/checkin
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{ "room_id": "room1" }
+```
 
 ## Performance Considerations
 

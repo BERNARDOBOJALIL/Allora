@@ -1,5 +1,5 @@
 import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
@@ -9,6 +9,7 @@ from app.websocket_manager import ConnectionManager
 from app.room_manager import RoomManager
 from app.models import LocationUpdate
 from app.api.routes import init_routes, router
+from app.auth import resolve_authenticated_user, extract_bearer_token
 
 logger = setup_logger(__name__, settings.log_level)
 
@@ -41,11 +42,25 @@ app.include_router(router, prefix="/api/v1", tags=["location"])
 
 
 @app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    user_id: str,
+    token: str | None = Query(default=None),
+    authorization: str | None = Header(default=None),
+):
     """WebSocket endpoint for real-time location updates."""
+    authenticated_user = None
     try:
-        await connection_manager.connect(user_id, websocket)
-        logger.info(f"WebSocket connection established for user {user_id}")
+        bearer_token = token or extract_bearer_token(authorization)
+        authenticated_user = resolve_authenticated_user(
+            user_id,
+            f"Bearer {bearer_token}" if bearer_token else None,
+        )
+
+        await connection_manager.connect(authenticated_user.user_id, websocket)
+        logger.info(
+            f"WebSocket connection established for user {authenticated_user.user_id}"
+        )
 
         while True:
             try:
@@ -58,7 +73,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
                 # Store location
                 connection_manager.store_location(
-                    user_id,
+                    authenticated_user.user_id,
                     {
                         "lat": location_update.lat,
                         "lng": location_update.lng,
@@ -68,7 +83,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
                 # Broadcast to users in same room
                 await connection_manager.broadcast_location(
-                    user_id,
+                    authenticated_user.user_id,
                     {
                         "lat": location_update.lat,
                         "lng": location_update.lng,
@@ -77,28 +92,29 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 )
 
                 logger.info(
-                    f"Location update from {user_id}: lat={location_update.lat}, lng={location_update.lng}"
+                    f"Location update from {authenticated_user.user_id}: lat={location_update.lat}, lng={location_update.lng}"
                 )
 
             except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON from {user_id}: {str(e)}")
+                logger.error(f"Invalid JSON from {authenticated_user.user_id}: {str(e)}")
                 await connection_manager.send_personal_message(
-                    user_id,
+                    authenticated_user.user_id,
                     {
                         "type": "error",
                         "message": "Invalid message format. Expected JSON with lat, lng, timestamp",
                     },
                 )
             except ValueError as e:
-                logger.error(f"Validation error from {user_id}: {str(e)}")
+                logger.error(f"Validation error from {authenticated_user.user_id}: {str(e)}")
                 await connection_manager.send_personal_message(
-                    user_id,
+                    authenticated_user.user_id,
                     {"type": "error", "message": f"Validation error: {str(e)}"},
                 )
 
     except WebSocketDisconnect:
-        await connection_manager.disconnect(user_id)
-        logger.info(f"User {user_id} disconnected")
+        if authenticated_user:
+            await connection_manager.disconnect(authenticated_user.user_id)
+            logger.info(f"User {authenticated_user.user_id} disconnected")
 
     except Exception as e:
         logger.error(f"WebSocket error for {user_id}: {str(e)}")
