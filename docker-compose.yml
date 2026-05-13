@@ -1,0 +1,93 @@
+version: "3.9"
+
+services:
+  # Location Service - Real-time location tracking
+  location-service:
+    build:
+      context: ./services/location-service
+      dockerfile: Dockerfile
+    container_name: location-service
+    ports:
+      - "8003:8003"
+    environment:
+      - SERVICE_NAME=location-service
+      - LOG_LEVEL=INFO
+      - HOST=0.0.0.0
+      - PORT=8003
+      - DEBUG=False
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - allora-network
+    restart: unless-stopped
+
+  # API Gateway (placeholder)
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      location-service:
+        condition: service_healthy
+    networks:
+      - allora-network
+    restart: unless-stopped
+
+  # Chat Service (placeholder)
+  chat-service:
+    build:
+      context: ./services/chat-service
+      dockerfile: Dockerfile
+    container_name: chat-service
+    ports:
+      - "8001:8001"
+    networks:
+      - allora-network
+    restart: unless-stopped
+
+  # Match Service (placeholder)
+  match-service:
+    build:
+      context: ./services/match-service
+      dockerfile: Dockerfile
+    container_name: match-service
+    ports:
+      - "8002:8002"
+    networks:
+      - allora-network
+    restart: unless-stopped
+
+  # Notification Service (placeholder)
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    ports:
+      - "8004:8004"
+    networks:
+      - allora-network
+    restart: unless-stopped
+
+  # User Service (placeholder)
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    ports:
+      - "8005:8005"
+    networks:
+      - allora-network
+    restart: unless-stopped
+
+networks:
+  allora-network:
+    driver: bridge
