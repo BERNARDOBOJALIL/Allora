@@ -10,6 +10,11 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: password
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - allora-network
     restart: unless-stopped
@@ -20,15 +25,6 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
-    networks:
-      - allora-network
-    restart: unless-stopped
-
-  # ── Cache, presencia y contadores efímeros (redis) ─────────
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
@@ -37,6 +33,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - allora-network
+    restart: unless-stopped
 
   # ── Bus de eventos para microservicios (rabbitmq) ──────────
   rabbitmq:
@@ -52,6 +51,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - allora-network
 
   # ── Autenticación y usuarios (auth-service) ───────────────
   auth-service:
@@ -59,10 +60,10 @@ services:
     container_name: auth-service
     env_file: .env
     ports:
-      - "8000:8000"
+      - "8001:8000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -80,13 +81,15 @@ services:
     build: ./services/chat-service
     env_file: .env
     ports:
-      - "8002:8000"
+      - "8006:8000"
     restart: on-failure
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - allora-network
     depends_on:
       mongodb:
         condition: service_healthy
@@ -111,7 +114,6 @@ services:
       JWT_ISSUER: auth-service
       REDIS_URL: redis://redis:6379/0
       USERS_SERVICE_URL: http://user-service:8005
-      CHAT_SERVICE_URL: http://chat-service:8001
       MATCHES_SERVICE_URL: http://match-service:8002
       NOTIFICATIONS_SERVICE_URL: http://notification-service:8004
     restart: unless-stopped
@@ -151,18 +153,6 @@ services:
     restart: unless-stopped
     depends_on:
       - auth-service
-
-  # Chat Service (placeholder)
-  chat-service:
-    build:
-      context: ./services/chat-service
-      dockerfile: Dockerfile
-    container_name: chat-service
-    ports:
-      - "8001:8001"
-    networks:
-      - allora-network
-    restart: unless-stopped
 
   # Match Service (placeholder)
   match-service:

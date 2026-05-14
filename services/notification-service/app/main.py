@@ -19,3 +19,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Notification Service", lifespan=lifespan)
 
 app.include_router(notifications.router)
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"service": "notification-service", "status": "ok"}
