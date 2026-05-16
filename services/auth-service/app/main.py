@@ -39,6 +39,7 @@ from app.security import (
     normalize_phone,
     verify_password,
 )
+import httpx
 
 
 @asynccontextmanager
@@ -301,6 +302,38 @@ async def register(
             user_id=user_id,
             telefono=payload.telefono,
         )
+
+    # Initialize profile using external Allora agent (best-effort)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            agent_payload = {
+                "user_id": user_id,
+                "thread_id": f"onboarding-{user_id}",
+                "message": (
+                    f"Initialize profile for new user. Nombre: {user_doc.get('nombre')}; "
+                    f"Email: {user_doc.get('email')}; Telefono: {user_doc.get('telefono')}"
+                ),
+            }
+            resp = await client.post("https://alloraagent.onrender.com/chat", json=agent_payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                mem = data.get("memory_updates") or {}
+                # Persist profile-related memories into a profiles collection
+                await db.profiles.update_one(
+                    {"user_id": user_id},
+                    {
+                        "$set": {
+                            "profile_memory": mem.get("profile_memory"),
+                            "context_memory": mem.get("context_memory"),
+                            "preference_memory": mem.get("preference_memory"),
+                            "updated_at": utc_now(),
+                        }
+                    },
+                    upsert=True,
+                )
+    except Exception:
+        # Best-effort: don't fail registration if external agent is unreachable
+        pass
 
     return build_user_response(user_doc, dev_codes)
 

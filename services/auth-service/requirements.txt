@@ -9,3 +9,4 @@ passlib[bcrypt]
 bcrypt<5
 python-multipart
 email-validator
+httpx>=0.24
