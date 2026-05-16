@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     users_service_url: str | None = None
     chat_service_url: str | None = None
+    location_service_url: str | None = None
     matches_service_url: str | None = None
     notifications_service_url: str | None = None
 

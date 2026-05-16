@@ -110,6 +110,7 @@ services:
     environment:
       AUTH_SERVICE_URL: http://auth-service:8000
       CHAT_SERVICE_URL: http://chat-service:8000
+      LOCATION_SERVICE_URL: http://location-service:8003
       JWT_ALGORITHM: RS256
       JWT_ISSUER: auth-service
       REDIS_URL: redis://redis:6379/0

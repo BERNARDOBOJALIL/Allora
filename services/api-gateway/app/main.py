@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth_middleware import fetch_jwks, require_auth
 from app.config import settings
@@ -32,6 +33,15 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="ALLORA API Gateway",
     lifespan=lifespan,
+)
+
+# Enable CORS for development (allow any origin)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -841,6 +851,17 @@ async def chat_proxy(
     user: dict[str, Any] = Depends(require_auth),
 ):
     return await protected_proxy(request, settings.chat_service_url, path, user)
+
+
+@app.api_route("/location", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/location/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def location_proxy(
+    request: Request,
+    path: str = "",
+    user: dict[str, Any] = Depends(require_auth),
+):
+    upstream_path = path or ""
+    return await protected_proxy(request, settings.location_service_url, upstream_path, user)
 
 
 @app.api_route("/profile", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

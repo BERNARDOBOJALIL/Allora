@@ -17,9 +17,9 @@ async def start_consumer():
     # routing keys par eventos
     routing_keys = [
         "signal.sent",
-        # "match.created",
-        # "user.registered",
-        # "message.sent"
+        "message.sent",
+        "match.created",
+        "user.registered",
     ]
     for key in routing_keys:
         await queue.bind(exchange, routing_key=key)
