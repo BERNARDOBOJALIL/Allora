@@ -24,6 +24,8 @@ class UserResponse(BaseModel):
     last_login: datetime | None = None
     password_changed_at: datetime | None = None
     dev_codes: dict[str, str] | None = None
+    assistant_message: str | None = None
+    onboarding_state: dict[str, Any] | None = None
 
     model_config = ConfigDict(use_enum_values=True)
 
@@ -41,16 +43,24 @@ class RegisterRequest(BaseModel):
     def clean_email(cls, value: Any) -> Any:
         return normalize_email(value)
 
-    @field_validator("telefono", mode="before")
-    @classmethod
-    def clean_phone(cls, value: Any) -> Any:
-        return normalize_phone(value)
 
-    @model_validator(mode="after")
-    def validate_identifier(self) -> "RegisterRequest":
-        if not self.email and not self.telefono:
-            raise ValueError("Debe existir al menos email o telefono")
-        return self
+class OnboardingRequest(BaseModel):
+    message: str = Field(min_length=1)
+    thread_id: str | None = None
+
+
+class OnboardingResponse(BaseModel):
+    assistant_message: str | None = None
+    memory_updates: dict[str, Any] | None = None
+    conversation_state: dict[str, Any] | None = None
+
+
+class ProfileMemoryResponse(BaseModel):
+    user_id: str
+    profile_memory: dict[str, Any] = Field(default_factory=dict)
+    context_memory: dict[str, Any] = Field(default_factory=dict)
+    preference_memory: dict[str, Any] = Field(default_factory=dict)
+    updated_at: datetime | None = None
 
 
 class LoginRequest(BaseModel):

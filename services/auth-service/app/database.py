@@ -1,5 +1,7 @@
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import ASCENDING
+import asyncio
+import time
 
 from app.config import settings
 
@@ -8,11 +10,22 @@ client: AsyncIOMotorClient | None = None
 database: AsyncIOMotorDatabase | None = None
 
 
-async def connect_to_mongo() -> None:
+async def connect_to_mongo(retry_seconds: int = 30) -> None:
     global client, database
-    client = AsyncIOMotorClient(settings.mongo_uri, tz_aware=True)
-    database = client[settings.mongo_db_name]
-    await create_indexes(database)
+    deadline = time.time() + retry_seconds
+    last_exc: Exception | None = None
+    while True:
+        try:
+            client = AsyncIOMotorClient(settings.mongo_uri, tz_aware=True, serverSelectionTimeoutMS=2000)
+            database = client[settings.mongo_db_name]
+            await create_indexes(database)
+            return
+        except Exception as exc:
+            last_exc = exc
+            if time.time() > deadline:
+                # raise the last exception so startup fails visibly after retries
+                raise
+            await asyncio.sleep(1)
 
 
 async def close_mongo_connection() -> None:

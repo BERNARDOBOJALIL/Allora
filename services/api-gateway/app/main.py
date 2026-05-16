@@ -790,7 +790,7 @@ async def me(user: dict[str, Any] = Depends(require_auth)) -> dict[str, Any]:
 
 
 @app.api_route(
-    "/auth/{path:path}",
+    "/auth/{path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
 )
 async def auth_proxy(path: str, request: Request):
@@ -803,6 +803,33 @@ async def auth_proxy(path: str, request: Request):
         request,
         f"{settings.auth_service_url}/auth/{path}",
     )
+
+
+# Protected auth-related endpoints (onboarding/profile-memory)
+@app.api_route(
+    "/auth/onboarding",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+)
+@app.api_route(
+    "/auth/onboarding/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+)
+async def auth_onboarding_proxy(request: Request, path: str = "", user: dict[str, Any] = Depends(require_auth)):
+    upstream_path = f"auth/onboarding/{path}" if path else "auth/onboarding"
+    return await protected_proxy(request, settings.auth_service_url, upstream_path, user)
+
+
+@app.api_route(
+    "/auth/profile-memory",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+)
+@app.api_route(
+    "/auth/profile-memory/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+)
+async def auth_profile_memory_proxy(request: Request, path: str = "", user: dict[str, Any] = Depends(require_auth)):
+    upstream_path = f"auth/profile-memory/{path}" if path else "auth/profile-memory"
+    return await protected_proxy(request, settings.auth_service_url, upstream_path, user)
 
 
 async def protected_proxy(

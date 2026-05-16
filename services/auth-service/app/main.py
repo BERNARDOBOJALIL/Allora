@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from datetime import timedelta
 
 from bson import ObjectId
@@ -19,6 +20,9 @@ from app.schemas import (
     MeUpdateRequest,
     MessageResponse,
     OAuthLoginRequest,
+    OnboardingRequest,
+    OnboardingResponse,
+    ProfileMemoryResponse,
     RefreshRequest,
     RegisterRequest,
     ResetPasswordRequest,
@@ -56,10 +60,16 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 def build_user_response(
     user: dict,
     dev_codes: dict[str, str] | None = None,
+    assistant_message: str | None = None,
+    onboarding_state: dict | None = None,
 ) -> UserResponse:
     payload = serialize_user(user)
     if settings.dev_return_codes and dev_codes:
         payload["dev_codes"] = dev_codes
+    if assistant_message is not None:
+        payload["assistant_message"] = assistant_message
+    if onboarding_state is not None:
+        payload["onboarding_state"] = onboarding_state
     return UserResponse(**payload)
 
 
@@ -113,6 +123,75 @@ def require_active_user(user: dict) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo")
     if user.get("is_blocked", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario bloqueado")
+
+
+def merge_list_values(existing: list, incoming: list) -> list:
+    merged: list = []
+    seen: set[str] = set()
+    for item in existing + incoming:
+        if item is None:
+            continue
+        value = item.strip() if isinstance(item, str) else item
+        if not value:
+            continue
+        key = str(value).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(value)
+    return merged
+
+
+def merge_memory_dict(existing: dict | None, incoming: dict | None) -> dict:
+    result = deepcopy(existing or {})
+    if not incoming:
+        return result
+
+    for key, value in incoming.items():
+        if value is None:
+            continue
+        current_value = result.get(key)
+        if isinstance(value, list):
+            current_list = current_value if isinstance(current_value, list) else []
+            result[key] = merge_list_values(current_list, value)
+        elif isinstance(value, dict):
+            current_dict = current_value if isinstance(current_value, dict) else {}
+            result[key] = merge_memory_dict(current_dict, value)
+        else:
+            result[key] = value
+    return result
+
+
+async def persist_profile_memory(
+    db: AsyncIOMotorDatabase,
+    user_id: str,
+    memory_updates: dict | None,
+) -> dict[str, dict]:
+    updates = memory_updates or {}
+    existing = await db.profiles.find_one({"user_id": user_id}) or {}
+
+    profile_memory = merge_memory_dict(existing.get("profile_memory"), updates.get("profile_memory"))
+    context_memory = merge_memory_dict(existing.get("context_memory"), updates.get("context_memory"))
+    preference_memory = merge_memory_dict(existing.get("preference_memory"), updates.get("preference_memory"))
+
+    await db.profiles.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "profile_memory": profile_memory,
+                "context_memory": context_memory,
+                "preference_memory": preference_memory,
+                "updated_at": utc_now(),
+            }
+        },
+        upsert=True,
+    )
+
+    return {
+        "profile_memory": profile_memory,
+        "context_memory": context_memory,
+        "preference_memory": preference_memory,
+    }
 
 
 async def create_verification_code(
@@ -304,6 +383,9 @@ async def register(
         )
 
     # Initialize profile using external Allora agent (best-effort)
+    assistant_message = None
+    onboarding_state = None
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             agent_payload = {
@@ -317,25 +399,19 @@ async def register(
             resp = await client.post("https://alloraagent.onrender.com/chat", json=agent_payload)
             if resp.status_code == 200:
                 data = resp.json()
-                mem = data.get("memory_updates") or {}
-                # Persist profile-related memories into a profiles collection
-                await db.profiles.update_one(
-                    {"user_id": user_id},
-                    {
-                        "$set": {
-                            "profile_memory": mem.get("profile_memory"),
-                            "context_memory": mem.get("context_memory"),
-                            "preference_memory": mem.get("preference_memory"),
-                            "updated_at": utc_now(),
-                        }
-                    },
-                    upsert=True,
-                )
+                assistant_message = data.get("assistant_message")
+                onboarding_state = data.get("conversation_state") or None
+                await persist_profile_memory(db, user_id, data.get("memory_updates") or {})
     except Exception:
         # Best-effort: don't fail registration if external agent is unreachable
         pass
 
-    return build_user_response(user_doc, dev_codes)
+    return build_user_response(
+        user_doc,
+        dev_codes,
+        assistant_message=assistant_message,
+        onboarding_state=onboarding_state,
+    )
 
 
 @app.post("/auth/login", response_model=TokenResponse, response_model_exclude_none=True)
@@ -700,3 +776,70 @@ async def oauth_login(
         user["updated_at"] = now
 
     return await issue_token_pair(db, user)
+
+
+
+@app.get(
+    "/auth/profile-memory/{user_id}",
+    response_model=ProfileMemoryResponse,
+    response_model_exclude_none=True,
+)
+async def get_profile_memory(
+    user_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> ProfileMemoryResponse:
+    # Only allow users to fetch their own profile memory
+    if str(current_user.get("_id")) != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso denegado")
+
+    doc = await db.profiles.find_one({"user_id": user_id}) or {}
+
+    return ProfileMemoryResponse(
+        user_id=user_id,
+        profile_memory=doc.get("profile_memory") or {},
+        context_memory=doc.get("context_memory") or {},
+        preference_memory=doc.get("preference_memory") or {},
+        updated_at=doc.get("updated_at"),
+    )
+
+
+@app.post(
+    "/auth/onboarding/{user_id}",
+    response_model=OnboardingResponse,
+    response_model_exclude_none=True,
+)
+async def post_onboarding_message(
+    user_id: str,
+    payload: OnboardingRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> OnboardingResponse:
+    # Only allow users to act on their own onboarding thread
+    if str(current_user.get("_id")) != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso denegado")
+
+    thread_id = payload.thread_id or f"onboarding-{user_id}"
+    assistant_message = None
+    memory_updates = None
+    conversation_state = None
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            agent_payload = {"user_id": user_id, "thread_id": thread_id, "message": payload.message}
+            resp = await client.post("https://alloraagent.onrender.com/chat", json=agent_payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                assistant_message = data.get("assistant_message")
+                memory_updates = data.get("memory_updates") or {}
+                conversation_state = data.get("conversation_state") or None
+                await persist_profile_memory(db, user_id, memory_updates)
+    except Exception:
+        # Best-effort: don't fail the request if the agent is unreachable
+        pass
+
+    return OnboardingResponse(
+        assistant_message=assistant_message,
+        memory_updates=memory_updates,
+        conversation_state=conversation_state,
+    )
