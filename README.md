@@ -29,55 +29,105 @@ Aplicaciones tradicionales como Tinder o Bumble utilizan modelos basados en *swi
 ## Diagrama General
 
 ```mermaid
-flowchart TB
-    Client[Cliente Web / Mobile / Postman]
+flowchart LR
 
-    subgraph Edge["Entrada al sistema"]
-        Gateway["API Gateway\nFastAPI\n:8000"]
+    %% =========================
+    %% CLIENTES
+    %% =========================
+    Client["Cliente Web / Mobile / Postman"]
+
+    %% =========================
+    %% EDGE LAYER
+    %% =========================
+    subgraph Edge["Entrada al Sistema"]
+        Gateway["API Gateway<br/>FastAPI :8000"]
     end
 
-    subgraph Backend["Servicios backend"]
-        Auth["Auth Service\nUsuarios, login, JWT\n:8001"]
-        Chat["Chat Service\nConversaciones y mensajes\n:8006"]
-        Location["Location Service\nUbicacion y WebSockets\n:8003"]
-        Notifications["Notification Service\nNotificaciones\n:8004"]
-        Users["User Service\nPerfil / preferencias\n:8005\nplaceholder actual"]
-        Match["Match Service\nMatches\n:8002\nplaceholder actual"]
+    %% =========================
+    %% BACKEND SERVICES
+    %% =========================
+    subgraph Backend["Servicios Backend"]
+
+        Auth["Auth Service<br/>Usuarios, Login, JWT<br/>:8001"]
+
+        Chat["Chat Service<br/>Conversaciones y Mensajes<br/>:8006"]
+
+        Location["Location Service<br/>Ubicación y WebSockets<br/>:8003"]
+
+        Notifications["Notification Service<br/>Notificaciones<br/>:8004"]
+
+        Users["User Service<br/>Perfil y Preferencias<br/>:8005<br/><i>Placeholder actual</i>"]
+
+        Match["Match Service<br/>Matches<br/>:8002<br/><i>Placeholder actual</i>"]
+
     end
 
-    subgraph Data["Persistencia y estado"]
-        MongoAuth[("MongoDB\nallora_auth")]
-        MongoChat[("MongoDB\nallora_chat")]
-        NotificationDB[("DB Notificaciones\nSQLAlchemy/Postgres esperado")]
-        Redis[("Redis\npresencia, unread counters,\ncache y estados temporales")]
+    %% =========================
+    %% DATA LAYER
+    %% =========================
+    subgraph Data["Persistencia y Estado"]
+
+        MongoAuth[("MongoDB<br/>allora_auth")]
+
+        MongoChat[("MongoDB<br/>allora_chat")]
+
+        NotificationDB[("PostgreSQL<br/>Notificaciones")]
+
+        Redis[("Redis<br/>Presencia<br/>Unread Counters<br/>Cache Temporal")]
+
     end
 
-    subgraph Messaging["Mensajeria"]
-        Rabbit["RabbitMQ\nTopic exchanges / queues"]
+    %% =========================
+    %% EVENT BUS
+    %% =========================
+    subgraph Messaging["Mensajería Asíncrona"]
+
+        Rabbit["RabbitMQ<br/>Topic Exchanges / Queues"]
+
     end
 
+    %% =========================
+    %% CLIENT CONNECTIONS
+    %% =========================
     Client -->|REST / HTTP| Gateway
-    Client -->|WebSocket ubicacion| Location
+    Client -->|WebSocket| Location
 
-    Gateway -->|/auth/* publico| Auth
+    %% =========================
+    %% GATEWAY ROUTING
+    %% =========================
+    Gateway -->|/auth/*| Auth
     Gateway -->|JWT + X-User-Id| Chat
     Gateway -->|JWT + X-User-Id| Location
     Gateway -->|JWT + X-User-Id| Users
     Gateway -->|JWT + X-User-Id| Match
 
-    Auth -->|users, refresh_tokens,\nverification_codes| MongoAuth
-    Chat -->|conversations, messages| MongoChat
-    Chat -->|presencia, no leidos,\ncache conversacion| Redis
-    Gateway -->|JWKS / validacion token| Auth
+    %% =========================
+    %% DATABASE CONNECTIONS
+    %% =========================
+    Auth --> MongoAuth
 
-    Chat -->|publica eventos:\nconversation.created\nmessage.sent\nmessages.read\nuser.online\nuser.offline| Rabbit
-    Match -->|publica evento:\nmatch.created| Rabbit
-    Auth -->|publica evento esperado:\nuser.registered| Rabbit
-    Rabbit -->|consume eventos relevantes| Notifications
-    Notifications -->|guarda notificaciones| NotificationDB
-````
+    Chat --> MongoChat
+    Chat --> Redis
 
----
+    Notifications --> NotificationDB
+
+    Gateway -->|JWKS / Validación JWT| Auth
+
+    %% =========================
+    %% EVENTS
+    %% =========================
+    Chat -->|conversation.created| Rabbit
+    Chat -->|message.sent| Rabbit
+    Chat -->|message.read| Rabbit
+    Chat -->|user.online| Rabbit
+    Chat -->|user.offline| Rabbit
+
+    Match -->|match.created| Rabbit
+
+    Auth -->|user.registered| Rabbit
+
+    Rabbit -->|Consume eventos| Notifications
+```
 
 # Flujo Completo de la Aplicación
 
