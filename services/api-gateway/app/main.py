@@ -887,7 +887,18 @@ async def location_proxy(
     path: str = "",
     user: dict[str, Any] = Depends(require_auth),
 ):
-    upstream_path = path or ""
+    upstream_path = f"api/v1/{path}" if path else "api/v1"
+    return await protected_proxy(request, settings.location_service_url, upstream_path, user)
+
+
+@app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def location_compat_proxy(
+    request: Request,
+    path: str,
+    user: dict[str, Any] = Depends(require_auth),
+):
+    # Compatibility route for clients that still call /api/v1/* on the gateway.
+    upstream_path = f"api/v1/{path}"
     return await protected_proxy(request, settings.location_service_url, upstream_path, user)
 
 

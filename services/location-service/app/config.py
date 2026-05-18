@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     auth_jwt_secret: str = "change_this_secret"
     auth_jwt_algorithm: str = "HS256"
     auth_service_url: str = "http://auth-service:8000"
+    chat_service_url: str = "http://chat-service:8000"
 
     class Config:
         env_file = ".env"

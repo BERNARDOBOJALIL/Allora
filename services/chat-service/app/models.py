@@ -24,6 +24,8 @@ def serialize_conversation(
     return {
         "id": str(conversation["_id"]),
         "participant_ids": conversation.get("participant_ids", []),
+        "conversation_type": conversation.get("conversation_type", "DIRECT"),
+        "group_id": conversation.get("group_id"),
         "match_id": conversation.get("match_id"),
         "last_message": conversation.get("last_message"),
         "last_message_at": conversation.get("last_message_at"),

@@ -18,6 +18,8 @@ class ConversationCreate(BaseModel):
 class ConversationResponse(BaseModel):
     id: str
     participant_ids: list[str]
+    conversation_type: str = "DIRECT"
+    group_id: str | None = None
     match_id: str | None = None
     last_message: str | None = None
     last_message_at: datetime | None = None
@@ -35,7 +37,7 @@ class MessageResponse(BaseModel):
     id: str
     conversation_id: str
     sender_id: str
-    receiver_id: str
+    receiver_id: str | None = None
     content: str
     message_type: MessageType = MessageType.TEXT
     status: MessageStatus = MessageStatus.SENT
@@ -57,3 +59,10 @@ class PresenceResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class GroupConversationCreate(BaseModel):
+    group_id: str = Field(min_length=1, max_length=128)
+    name: str | None = Field(default=None, max_length=120)
+    description: str | None = Field(default=None, max_length=800)
+    photo_base64: str | None = None

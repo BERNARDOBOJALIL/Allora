@@ -12,6 +12,9 @@ Real-time user location updates and presence tracking microservice built with Fa
 - ✅ Dockerized deployment
 - ✅ Health check endpoint
 - ✅ Connection management and broadcast system
+- ✅ Proximity-based user spaces (mini groups)
+- ✅ Shared group chat integration through chat-service
+- ✅ Space lifecycle rules (auto-expiration and auto-delete)
 
 ## Architecture
 
@@ -164,6 +167,62 @@ Response:
   "message": "User user123 checked out from room room1",
   "timestamp": "2024-01-15T10:30:45.123456"
 }
+
+### Create Proximity Space
+```http
+POST /api/v1/spaces
+Content-Type: application/json
+
+{
+  "user_id": "user123",
+  "name": "Cafeteria Centro",
+  "description": "Grupo para quienes estan cerca de la cafeteria",
+  "photo_base64": "...",
+  "lat": 19.4326,
+  "lng": -99.1332,
+  "radius_km": 1.5
+}
+```
+
+Notes:
+- The space creator is automatically added as first member.
+- A shared group conversation is created in chat-service.
+
+### List Nearby Spaces
+```http
+GET /api/v1/spaces/nearby?lat=19.4326&lng=-99.1332&radius_km=5
+```
+
+### Join Space (Proximity Required)
+```http
+POST /api/v1/spaces/{space_id}/join
+Content-Type: application/json
+
+{
+  "user_id": "user456",
+  "lat": 19.4330,
+  "lng": -99.1330
+}
+```
+
+Notes:
+- Join is allowed only if user is inside the space radius.
+- `lat/lng` can be omitted if user location is already being tracked over WebSocket.
+- Joining also adds the user to the shared group chat in chat-service.
+
+### Leave Space
+```http
+POST /api/v1/spaces/{space_id}/leave
+Content-Type: application/json
+
+{
+  "user_id": "user456"
+}
+```
+
+Lifecycle rules:
+- If no one joins within 1 hour (only creator remains), the space is deleted.
+- If a space had multiple members and then drops to only 1, it is deleted.
 ```
 
 ## WebSocket Endpoint

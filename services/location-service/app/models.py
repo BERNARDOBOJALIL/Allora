@@ -63,3 +63,39 @@ class CheckoutRequest(BaseModel):
 
     user_id: str | None = None
     room_id: str
+
+
+class SpaceCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(min_length=1, max_length=800)
+    photo_base64: str = Field(min_length=1)
+    lat: float
+    lng: float
+    radius_km: float = Field(default=1.0, gt=0.0, le=20.0)
+    user_id: str | None = None
+
+
+class SpaceJoinRequest(BaseModel):
+    user_id: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+
+
+class SpaceResponse(BaseModel):
+    space_id: str
+    name: str
+    description: str
+    photo_base64: str
+    owner_user_id: str
+    lat: float
+    lng: float
+    radius_km: float
+    members: list[str]
+    chat_conversation_id: str | None = None
+    created_at: str
+    expires_at: str | None = None
+
+
+class SpacesResponse(BaseModel):
+    count: int
+    spaces: list[SpaceResponse]

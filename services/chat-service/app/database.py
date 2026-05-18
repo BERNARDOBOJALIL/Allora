@@ -29,6 +29,8 @@ def get_database() -> AsyncIOMotorDatabase:
 async def create_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.conversations.create_index([("participant_key", ASCENDING)], unique=True)
     await db.conversations.create_index([("participant_ids", ASCENDING)])
+    await db.conversations.create_index([("group_id", ASCENDING)])
+    await db.conversations.create_index([("conversation_type", ASCENDING)])
     await db.conversations.create_index([("match_id", ASCENDING)])
     await db.conversations.create_index([("updated_at", DESCENDING)])
 

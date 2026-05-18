@@ -22,6 +22,7 @@ from app.models import MessageStatus, serialize_conversation, serialize_message,
 from app.schemas import (
     ConversationCreate,
     ConversationResponse,
+    GroupConversationCreate,
     HealthResponse,
     MessageCreate,
     MessageResponse,
@@ -93,6 +94,30 @@ def get_receiver_id(conversation: dict, sender_id: str) -> str:
     )
 
 
+def is_group_conversation(conversation: dict) -> bool:
+    return conversation.get("conversation_type") == "GROUP"
+
+
+async def get_group_conversation_for_user(
+    db: AsyncIOMotorDatabase,
+    conversation_id: str,
+    user_id: str,
+) -> dict:
+    conversation = await db.conversations.find_one(
+        {
+            "_id": require_object_id(conversation_id, "conversation_id"),
+            "conversation_type": "GROUP",
+            "participant_ids": user_id,
+        }
+    )
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversacion de grupo no encontrada",
+        )
+    return conversation
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(service="chat-service", status="ok")
@@ -154,6 +179,96 @@ async def create_conversation(
         serialize_conversation(conversation_doc),
     )
     return ConversationResponse(**serialize_conversation(conversation_doc))
+
+
+@app.post(
+    "/group-conversations",
+    response_model=ConversationResponse,
+    response_model_exclude_none=True,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_group_conversation(
+    payload: GroupConversationCreate,
+    user_id: UserIdHeader,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> ConversationResponse:
+    participant_key = f"group:{payload.group_id}"
+    existing = await db.conversations.find_one({"participant_key": participant_key})
+    if existing:
+        return ConversationResponse(**serialize_conversation(existing))
+
+    now = utc_now()
+    conversation_doc = {
+        "participant_ids": [user_id],
+        "participant_key": participant_key,
+        "conversation_type": "GROUP",
+        "group_id": payload.group_id,
+        "group_name": payload.name,
+        "group_description": payload.description,
+        "group_photo_base64": payload.photo_base64,
+        "match_id": None,
+        "last_message": None,
+        "last_message_at": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    try:
+        result = await db.conversations.insert_one(conversation_doc)
+    except DuplicateKeyError:
+        existing = await db.conversations.find_one({"participant_key": participant_key})
+        return ConversationResponse(**serialize_conversation(existing))
+
+    conversation_doc["_id"] = result.inserted_id
+    await publish_event(
+        "group.conversation.created",
+        serialize_conversation(conversation_doc),
+    )
+    return ConversationResponse(**serialize_conversation(conversation_doc))
+
+
+@app.post(
+    "/group-conversations/{conversation_id}/join",
+    response_model=ConversationResponse,
+    response_model_exclude_none=True,
+)
+async def join_group_conversation(
+    conversation_id: str,
+    user_id: UserIdHeader,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> ConversationResponse:
+    conversation = await db.conversations.find_one(
+        {
+            "_id": require_object_id(conversation_id, "conversation_id"),
+            "conversation_type": "GROUP",
+        }
+    )
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grupo no encontrado")
+
+    await db.conversations.update_one(
+        {"_id": conversation["_id"]},
+        {
+            "$addToSet": {"participant_ids": user_id},
+            "$set": {"updated_at": utc_now()},
+        },
+    )
+    updated = await db.conversations.find_one({"_id": conversation["_id"]})
+    return ConversationResponse(**serialize_conversation(updated))
+
+
+@app.get("/group-conversations", response_model=list[ConversationResponse])
+async def list_group_conversations(
+    user_id: UserIdHeader,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> list[ConversationResponse]:
+    cursor = db.conversations.find(
+        {
+            "conversation_type": "GROUP",
+            "participant_ids": user_id,
+        }
+    ).sort("updated_at", -1)
+    return [ConversationResponse(**serialize_conversation(c)) async for c in cursor]
 
 
 @app.get("/conversations", response_model=list[ConversationResponse])
@@ -245,6 +360,72 @@ async def send_message(
     serialized = serialize_message(message_doc)
     await publish_event("message.sent", serialized)
     return MessageResponse(**serialized)
+
+
+@app.get("/group-conversations/{conversation_id}/messages", response_model=list[MessageResponse])
+async def list_group_messages(
+    conversation_id: str,
+    user_id: UserIdHeader,
+    limit: int = Query(default=50, ge=1, le=100),
+    skip: int = Query(default=0, ge=0),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> list[MessageResponse]:
+    await get_group_conversation_for_user(db, conversation_id, user_id)
+    cursor = (
+        db.messages.find({"conversation_id": conversation_id, "deleted_at": None})
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(limit)
+    )
+    messages = [MessageResponse(**serialize_message(message)) async for message in cursor]
+    return list(reversed(messages))
+
+
+@app.post(
+    "/group-conversations/{conversation_id}/messages",
+    response_model=MessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def send_group_message(
+    conversation_id: str,
+    payload: MessageCreate,
+    user_id: UserIdHeader,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> MessageResponse:
+    conversation = await get_group_conversation_for_user(db, conversation_id, user_id)
+    now = utc_now()
+    content = payload.content.strip()
+
+    message_doc = {
+        "conversation_id": conversation_id,
+        "sender_id": user_id,
+        "receiver_id": None,
+        "content": content,
+        "message_type": payload.message_type.value,
+        "status": MessageStatus.SENT.value,
+        "created_at": now,
+        "delivered_at": None,
+        "read_at": None,
+        "deleted_at": None,
+    }
+    result = await db.messages.insert_one(message_doc)
+    message_doc["_id"] = result.inserted_id
+
+    await db.conversations.update_one(
+        {"_id": conversation["_id"]},
+        {
+            "$set": {
+                "last_message": content,
+                "last_message_at": now,
+                "updated_at": now,
+            }
+        },
+    )
+
+    serialized = serialize_message(message_doc)
+    serialized["group_id"] = conversation.get("group_id")
+    await publish_event("message.sent", serialized)
+    return MessageResponse(**serialize_message(message_doc))
 
 
 @app.post(

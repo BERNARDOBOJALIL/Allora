@@ -1,4 +1,5 @@
 import json
+import asyncio
 from fastapi import FastAPI, Header, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -22,7 +23,25 @@ room_manager = RoomManager()
 async def lifespan(app: FastAPI):
     """Application startup and shutdown."""
     logger.info(f"Starting {settings.service_name}")
+    stop_event = asyncio.Event()
+
+    async def cleanup_spaces_task():
+        while not stop_event.is_set():
+            deleted_spaces = room_manager.cleanup_expired_spaces()
+            if deleted_spaces:
+                for user_id, room_id in list(connection_manager.user_rooms.items()):
+                    if room_id in deleted_spaces:
+                        connection_manager.remove_user_from_room(user_id)
+            await asyncio.sleep(60)
+
+    cleanup_task = asyncio.create_task(cleanup_spaces_task())
     yield
+    stop_event.set()
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
     logger.info(f"Shutting down {settings.service_name}")
 
 
