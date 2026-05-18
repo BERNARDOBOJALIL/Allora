@@ -2,6 +2,7 @@ fastapi>=0.111,<1
 uvicorn[standard]>=0.29,<1
 motor>=3.5,<4
 pymongo>=4.7,<5
+dnspython>=2.6,<3
 pydantic>=2,<3
 pydantic-settings>=2,<3
 aio-pika>=9.4,<10
