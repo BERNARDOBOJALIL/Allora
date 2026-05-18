@@ -318,6 +318,79 @@ async def health() -> dict[str, str]:
     return {"service": "auth-service", "status": "ok"}
 
 
+
+
+# ─── Endpoints internos para match-service ────────────────────────────────────
+# Fusionan db.users (datos de autenticación) con db.profiles (datos del agente)
+# para exponer el perfil completo que necesita el motor de matching.
+
+def build_match_profile(user: dict, profile: dict) -> dict:
+    """
+    Combina el documento de usuario (db.users) con las memorias del agente
+    (db.profiles) y devuelve el shape que espera matching_engine.py:
+      edad, genero, intereses, preferencias, bio, fotos, ubicacion
+    """
+    pm = profile.get("profile_memory") or {}
+    pref = profile.get("preference_memory") or {}
+
+    return {
+        "id": str(user["_id"]),
+        "nombre": user.get("nombre"),
+        "email": user.get("email"),
+        # Campos extraídos por el agente desde profile_memory
+        "edad": pm.get("edad") or pm.get("age"),
+        "genero": pm.get("genero") or pm.get("gender"),
+        "bio": pm.get("bio") or pm.get("biography"),
+        "fotos": pm.get("fotos") or pm.get("photos") or [],
+        "intereses": pm.get("intereses") or pm.get("interests") or pm.get("hobbies") or [],
+        "ubicacion": pm.get("ubicacion") or pm.get("location") or {},
+        # Preferencias de matching extraídas por el agente desde preference_memory
+        "preferencias": {
+            "edad_minima": pref.get("edad_minima") or pref.get("min_age") or 18,
+            "edad_maxima": pref.get("edad_maxima") or pref.get("max_age") or 65,
+            "distancia_maxima_km": pref.get("distancia_maxima_km") or pref.get("max_distance_km") or 50,
+            "genero_preferido": pref.get("genero_preferido") or pref.get("preferred_gender"),
+        },
+    }
+
+
+@app.get("/users/{user_id}")
+async def get_user_for_matching(
+    user_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> dict:
+    """
+    Endpoint interno usado por match-service para obtener el perfil completo
+    de un usuario (datos auth + memorias del agente).
+    No requiere autenticación porque solo es accesible desde la red interna.
+    """
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    profile = await db.profiles.find_one({"user_id": user_id}) or {}
+    return build_match_profile(user, profile)
+
+
+@app.get("/users")
+async def list_users_for_matching(
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> list[dict]:
+    """
+    Lista todos los usuarios activos con su perfil fusionado.
+    Usado por match-service para obtener candidatos.
+    """
+    users = await db.users.find({"is_active": True, "is_blocked": False}).to_list(500)
+    result = []
+    for user in users:
+        user_id = str(user["_id"])
+        profile = await db.profiles.find_one({"user_id": user_id}) or {}
+        result.append(build_match_profile(user, profile))
+    return result
+
 @app.get("/auth/.well-known/jwks.json")
 async def jwks() -> dict[str, list[dict[str, str]]]:
     return get_jwks()
