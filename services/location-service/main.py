@@ -1,8 +1,10 @@
 import json
 import asyncio
+from datetime import datetime
 from fastapi import FastAPI, Header, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from pydantic import ValidationError
 
 from app.config import settings
 from app.logger import setup_logger
@@ -17,6 +19,28 @@ logger = setup_logger(__name__, settings.log_level)
 # Global managers
 connection_manager = ConnectionManager()
 room_manager = RoomManager()
+
+
+def normalize_location_payload(message: dict) -> dict:
+    """Accept common frontend payload shapes for location updates."""
+    if "lat" in message and "lng" in message:
+        normalized = dict(message)
+    elif "latitude" in message and "longitude" in message:
+        normalized = {
+            "lat": message.get("latitude"),
+            "lng": message.get("longitude"),
+            "timestamp": message.get("timestamp"),
+            "user_name": message.get("user_name") or message.get("nombre") or message.get("name"),
+        }
+    elif isinstance(message.get("data"), dict):
+        return normalize_location_payload(message["data"])
+    else:
+        raise ValueError("Invalid location payload. Expected lat/lng or latitude/longitude")
+
+    if normalized.get("timestamp") is None:
+        normalized["timestamp"] = datetime.utcnow().isoformat()
+
+    return normalized
 
 
 @asynccontextmanager
@@ -76,7 +100,11 @@ async def websocket_endpoint(
             f"Bearer {bearer_token}" if bearer_token else None,
         )
 
-        await connection_manager.connect(authenticated_user.user_id, websocket)
+        await connection_manager.connect(
+            authenticated_user.user_id,
+            websocket,
+            user_name=authenticated_user.nombre,
+        )
         logger.info(
             f"WebSocket connection established for user {authenticated_user.user_id}"
         )
@@ -86,9 +114,23 @@ async def websocket_endpoint(
                 # Receive JSON message from client
                 data = await websocket.receive_text()
                 message = json.loads(data)
+                normalized_message = normalize_location_payload(message)
 
                 # Validate location update
-                location_update = LocationUpdate(**message)
+                location_update = LocationUpdate(**normalized_message)
+
+                reported_user_name = (
+                    normalized_message.get("user_name")
+                    or normalized_message.get("nombre")
+                    or normalized_message.get("name")
+                )
+                if reported_user_name:
+                    connection_manager.set_user_name(
+                        authenticated_user.user_id,
+                        str(reported_user_name),
+                    )
+
+                current_room_id = connection_manager.get_user_room(authenticated_user.user_id)
 
                 # Store location
                 connection_manager.store_location(
@@ -97,6 +139,8 @@ async def websocket_endpoint(
                         "lat": location_update.lat,
                         "lng": location_update.lng,
                         "timestamp": location_update.timestamp,
+                        "room_id": current_room_id,
+                        "user_name": reported_user_name,
                     },
                 )
 
@@ -123,7 +167,7 @@ async def websocket_endpoint(
                         "message": "Invalid message format. Expected JSON with lat, lng, timestamp",
                     },
                 )
-            except ValueError as e:
+            except (ValueError, ValidationError) as e:
                 logger.error(f"Validation error from {authenticated_user.user_id}: {str(e)}")
                 await connection_manager.send_personal_message(
                     authenticated_user.user_id,

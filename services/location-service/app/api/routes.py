@@ -229,6 +229,7 @@ async def get_nearby_users(lat: float, lng: float, radius_km: float = 5.0):
             if d <= radius_km:
                 results.append({
                     "user_id": user_id,
+                    "user_name": connection_manager.get_user_name(user_id),
                     "lat": loc.get("lat"),
                     "lng": loc.get("lng"),
                     "distance_km": round(d, 3),

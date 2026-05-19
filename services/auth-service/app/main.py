@@ -240,6 +240,7 @@ async def issue_token_pair(db: AsyncIOMotorDatabase, user: dict) -> TokenRespons
         role=user.get("role", Role.USER.value),
         plan=user.get("plan", Plan.FREE.value),
         email=user.get("email"),
+        nombre=user.get("nombre"),
     )
     refresh_token = await issue_refresh_token(db, user_id)
     return TokenResponse(
@@ -466,6 +467,7 @@ async def refresh_token(
         role=user.get("role", Role.USER.value),
         plan=user.get("plan", Plan.FREE.value),
         email=user.get("email"),
+        nombre=user.get("nombre"),
     )
     return AccessTokenResponse(access_token=access_token, token_type="bearer", expires_in=expires_in)
 

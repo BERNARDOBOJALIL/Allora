@@ -11,6 +11,7 @@ class AuthenticatedUser:
     user_id: str
     role: str | None = None
     plan: str | None = None
+    nombre: str | None = None
     authenticated: bool = False
 
 
@@ -73,5 +74,6 @@ def resolve_authenticated_user(
         user_id=token_user_id,
         role=payload.get("role"),
         plan=payload.get("plan"),
+        nombre=payload.get("nombre") or payload.get("name"),
         authenticated=True,
     )

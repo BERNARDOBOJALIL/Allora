@@ -14,11 +14,14 @@ class ConnectionManager:
         self.active_connections: Dict[str, WebSocket] = {}
         self.user_locations: Dict[str, dict] = {}
         self.user_rooms: Dict[str, str] = {}  # user_id -> room_id
+        self.user_names: Dict[str, str] = {}
 
-    async def connect(self, user_id: str, websocket: WebSocket):
+    async def connect(self, user_id: str, websocket: WebSocket, user_name: str | None = None):
         """Register a new WebSocket connection."""
         await websocket.accept()
         self.active_connections[user_id] = websocket
+        if user_name:
+            self.user_names[user_id] = user_name
         logger.info(f"User {user_id} connected. Total connections: {len(self.active_connections)}")
 
     async def disconnect(self, user_id: str):
@@ -36,24 +39,22 @@ class ConnectionManager:
         else:
             logger.info(f"User {user_id} disconnected")
 
+        if user_id in self.user_names:
+            del self.user_names[user_id]
+
     async def broadcast_location(self, user_id: str, location_data: dict):
-        """Broadcast location update to all connected users in the same room."""
-        room_id = self.user_rooms.get(user_id)
-
-        if not room_id:
-            return
-
-        # Get all users in the same room
-        users_in_room = [uid for uid, rid in self.user_rooms.items() if rid == room_id]
+        """Broadcast location update to all connected users regardless of rooms."""
+        sender_room_id = self.user_rooms.get(user_id)
 
         broadcast_data = {
             "type": "location_update",
             "user_id": user_id,
+            "user_name": self.user_names.get(user_id),
             "data": location_data,
-            "room_id": room_id,
+            "room_id": sender_room_id,
         }
 
-        for other_user in users_in_room:
+        for other_user in list(self.active_connections.keys()):
             if other_user in self.active_connections:
                 try:
                     await self.active_connections[other_user].send_json(broadcast_data)
@@ -116,17 +117,38 @@ class ConnectionManager:
         """Get all user locations."""
         return self.user_locations.copy()
 
+    def get_user_name(self, user_id: str) -> str | None:
+        """Get display name of a connected/authenticated user."""
+        return self.user_names.get(user_id)
+
+    def set_user_name(self, user_id: str, user_name: str | None) -> None:
+        """Store or update display name for a connected user."""
+        cleaned = (user_name or "").strip()
+        if cleaned:
+            self.user_names[user_id] = cleaned
+
     def store_location(self, user_id: str, location: dict):
         """Store user location."""
+        self.set_user_name(
+            user_id,
+            location.get("user_name") or location.get("nombre") or location.get("name"),
+        )
+        if "room_id" not in location:
+            location["room_id"] = self.user_rooms.get(user_id)
         self.user_locations[user_id] = location
 
     def add_user_to_room(self, user_id: str, room_id: str):
         """Add user to a room."""
         self.user_rooms[user_id] = room_id
+        if user_id in self.user_locations:
+            self.user_locations[user_id]["room_id"] = room_id
 
     def remove_user_from_room(self, user_id: str) -> str:
         """Remove user from their room."""
-        return self.user_rooms.pop(user_id, None)
+        previous_room = self.user_rooms.pop(user_id, None)
+        if user_id in self.user_locations:
+            self.user_locations[user_id]["room_id"] = None
+        return previous_room
 
     def get_room_users(self, room_id: str) -> List[str]:
         """Get all users in a specific room."""

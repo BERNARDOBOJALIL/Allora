@@ -120,6 +120,7 @@ def create_access_token(
     role: str,
     plan: str,
     email: str | None = None,
+    nombre: str | None = None,
 ) -> tuple[str, int]:
     expires_delta = timedelta(minutes=settings.jwt_expire_minutes)
     now = utc_now()
@@ -135,6 +136,8 @@ def create_access_token(
     }
     if email:
         payload["email"] = email
+    if nombre:
+        payload["nombre"] = nombre
     if settings.jwt_algorithm == "RS256":
         private_key_pem, _ = get_signing_keys()
         token = jwt.encode(
