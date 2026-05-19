@@ -155,17 +155,39 @@ services:
     depends_on:
       - auth-service
 
-  # Match Service (placeholder)
+  # Match Service - User matching and compatibility
   match-service:
     build:
       context: ./services/match-service
       dockerfile: Dockerfile
     container_name: match-service
+    env_file: .env
     ports:
       - "8002:8002"
+    environment:
+      - MONGODB_URL=mongodb://root:password@mongodb:27017
+      - MONGODB_DB=match_service
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - LOCATION_SERVICE_URL=http://location-service:8003
+      - LOG_LEVEL=INFO
+      - MAX_DISTANCE_KM=50.0
+      - MIN_COMPATIBILITY_SCORE=0.5
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
     networks:
       - allora-network
     restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      location-service:
+        condition: service_healthy
 
   # Notification Service (placeholder)
   notification-service:
