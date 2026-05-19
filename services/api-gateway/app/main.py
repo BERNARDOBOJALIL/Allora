@@ -35,6 +35,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # En desarrollo permite todos, en producción restringir
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 # Enable CORS for development (allow any origin)
 app.add_middleware(
     CORSMiddleware,
