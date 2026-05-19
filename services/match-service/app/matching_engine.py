@@ -42,26 +42,45 @@ class MatchingEngine:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.auth_service_url}/users/{user_id}",
-                    timeout=5.0
+                    timeout=5.0,
                 )
                 if response.status_code == 200:
                     return response.json()
         except Exception as e:
             logger.error(f"Error fetching user profile {user_id}: {e}")
         return None
-    
-    async def get_user_location(self, user_id: str) -> Optional[dict]:
-        """Get user location from location service"""
+
+    async def list_all_user_profiles(self) -> list[dict]:
+        """List all active user profiles from auth service"""
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{self.location_service_url}/api/v1/locations/{user_id}",
-                    timeout=5.0
+                    f"{self.auth_service_url}/users",
+                    timeout=10.0,
                 )
                 if response.status_code == 200:
                     return response.json()
         except Exception as e:
-            logger.error(f"Error fetching user location {user_id}: {e}")
+            logger.error(f"Error listing user profiles: {e}")
+        return []
+
+    async def get_user_location(self, user_id: str, profile: Optional[dict] = None) -> Optional[dict]:
+        """Get user location from location service or fallback to profile location"""
+        if profile:
+            location = profile.get("ubicacion")
+            if location and location.get("lat") is not None and location.get("lng") is not None:
+                return location
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.location_service_url}/api/v1/locations/{user_id}",
+                    timeout=5.0,
+                )
+                if response.status_code == 200:
+                    return response.json()
+        except Exception as e:
+            logger.warning(f"Error fetching user location {user_id}: {e}")
         return None
     
     async def calculate_compatibility(
@@ -177,23 +196,38 @@ class MatchingEngine:
             "genero": gender_filter if gender_filter else {"$exists": True},
         }
         
-        # Get candidates
-        candidates = await self.db["user_profiles"].find(query).skip(skip).limit(limit).to_list(limit)
-        
+        # Get candidate profiles from auth service
+        candidates = await self.list_all_user_profiles()
+        candidates = [
+            candidate for candidate in candidates
+            if str(candidate.get("id")) != user_id
+        ]
+
+        if gender_filter:
+            candidates = [
+                candidate for candidate in candidates
+                if str(candidate.get("genero", "")).lower() == str(gender_filter).lower()
+            ]
+
+        candidates = candidates[skip: skip + limit]
+
         matches = []
         for candidate in candidates:
-            candidate_location = await self.get_user_location(str(candidate["_id"]))
+            candidate_location = await self.get_user_location(
+                str(candidate.get("id")),
+                profile=candidate,
+            )
             score, reasons = await self.calculate_compatibility(
                 user, candidate, location, candidate_location
             )
-            
+
             if score >= self.min_score:
                 matches.append({
-                    "user_id": str(candidate["_id"]),
+                    "user_id": str(candidate.get("id")),
                     "score": score,
                     "reasons": reasons,
                 })
-        
+
         # Sort by score descending
         matches.sort(key=lambda x: x["score"], reverse=True)
         return matches

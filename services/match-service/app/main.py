@@ -102,7 +102,7 @@ async def calculate_compatibility(
         
         return MatchCompatibilityResponse(
             user_a_id=request.user_a_id,
-            user_b_id_id=request.user_b_id,
+            user_b_id=request.user_b_id,
             score=score,
             reasons=reasons,
         )

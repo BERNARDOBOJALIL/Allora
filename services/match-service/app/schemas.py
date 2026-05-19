@@ -70,7 +70,7 @@ class MatchCompatibilityRequest(BaseModel):
 class MatchCompatibilityResponse(BaseModel):
     """Compatibility calculation result"""
     user_a_id: str
-    user_b_id_id: str
+    user_b_id: str
     score: float
     reasons: list[str]
 
