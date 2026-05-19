@@ -309,6 +309,27 @@ async def delete_match(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error deleting match",
         )
+    
+
+# Increment unlock level for a match (called by chat-service when a message is sent)
+@app.patch("/matches/{match_id}/unlock")
+async def increment_unlock_level(
+    match_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    if not ObjectId.is_valid(match_id):
+        raise HTTPException(status_code=400, detail="Invalid match_id")
+    object_id = ObjectId(match_id)
+    match = await db["matches"].find_one({"_id": object_id})
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    current_level = match.get("unlock_level", 0)
+    new_level = min(100, current_level + 10)
+    await db["matches"].update_one(
+        {"_id": object_id},
+        {"$set": {"unlock_level": new_level, "updated_at": utc_now()}}
+    )
+    return {"match_id": match_id, "unlock_level": new_level}
 
 
 if __name__ == "__main__":

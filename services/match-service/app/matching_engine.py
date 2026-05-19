@@ -232,6 +232,7 @@ class MatchingEngine:
             "status": MatchStatus.PENDING.value,
             "compatibility_score": score,
             "reasons": reasons,
+            "unlock_level": 0,  
             "created_at": utc_now(),
             "updated_at": utc_now(),
             "expires_at": utc_now() + timedelta(days=7),

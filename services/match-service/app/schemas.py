@@ -42,6 +42,7 @@ class MatchResponse(BaseModel):
     status: MatchStatus = MatchStatus.PENDING
     compatibility_score: float
     reasons: list[str] = Field(default_factory=list)
+    unlock_level: int = Field(default=0, ge=0, le=100) 
     created_at: datetime
     updated_at: datetime
     expires_at: Optional[datetime] = None

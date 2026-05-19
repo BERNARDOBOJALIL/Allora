@@ -7,3 +7,4 @@ pydantic-settings>=2,<3
 aio-pika>=9.4,<10
 redis[hiredis]>=5,<6
 python-multipart>=0.0.9,<1
+httpx==0.25.2

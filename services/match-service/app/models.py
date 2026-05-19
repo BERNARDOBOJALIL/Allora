@@ -23,6 +23,7 @@ def serialize_match(match: dict[str, Any]) -> dict[str, Any]:
         "status": match.get("status", MatchStatus.PENDING.value),
         "compatibility_score": match.get("compatibility_score", 0.0),
         "reasons": match.get("reasons", []),
+        "unlock_level": match.get("unlock_level", 0), 
         "created_at": match.get("created_at"),
         "updated_at": match.get("updated_at"),
         "expires_at": match.get("expires_at"),

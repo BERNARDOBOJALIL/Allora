@@ -1,12 +1,14 @@
 import logging
 from contextlib import asynccontextmanager
 from typing import Annotated
+import httpx
 
 from bson import ObjectId
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
 from redis.asyncio import Redis
+import asyncio
 
 from app.cache import (
     close_redis_connection,
@@ -91,6 +93,19 @@ def get_receiver_id(conversation: dict, sender_id: str) -> str:
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="La conversacion no tiene receptor valido",
     )
+
+async def notify_match_unlock(match_id: str):
+    """Envía una petición al match-service para incrementar unlock_level."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.patch(
+                f"http://match-service:8002/matches/{match_id}/unlock",
+                timeout=2.0
+            )
+            if resp.status_code != 200:
+                logger.warning(f"Failed to increment unlock for match {match_id}: {resp.status_code}")
+    except Exception as e:
+        logger.error(f"Error calling match-service for match {match_id}: {e}")
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -244,6 +259,11 @@ async def send_message(
 
     serialized = serialize_message(message_doc)
     await publish_event("message.sent", serialized)
+    # Si la conversación tiene match_id, notificar al match-service
+    match_id = conversation.get("match_id")
+    if match_id:
+        asyncio.create_task(notify_match_unlock(match_id))
+        
     return MessageResponse(**serialized)
 
 
