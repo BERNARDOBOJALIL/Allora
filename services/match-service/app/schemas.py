@@ -56,6 +56,19 @@ class MatchListResponse(BaseModel):
     matches: list[MatchResponse]
 
 
+class PotentialMatchResponse(BaseModel):
+    """Potential match candidate returned by the matching engine"""
+    user_id: str
+    score: float
+    reasons: list[str] = Field(default_factory=list)
+
+
+class PotentialMatchListResponse(BaseModel):
+    """List of potential match candidates"""
+    total: int
+    matches: list[PotentialMatchResponse]
+
+
 class MatchUpdateRequest(BaseModel):
     """Update match status"""
     status: MatchStatus

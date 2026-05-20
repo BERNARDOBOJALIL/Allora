@@ -33,11 +33,123 @@ class MatchingEngine:
         self.db = db
         self.auth_service_url = settings.auth_service_url
         self.location_service_url = settings.location_service_url
+        self.profile_agent_url = settings.profile_agent_url
         self.max_distance = settings.max_distance_km
         self.min_score = settings.min_compatibility_score
+
+    @staticmethod
+    def _normalize_list(value: object) -> list[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+        return []
+
+    @staticmethod
+    def _merge_unique_strings(*groups: list[str]) -> list[str]:
+        merged: list[str] = []
+        seen: set[str] = set()
+        for group in groups:
+            for item in group:
+                key = item.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(item)
+        return merged
+
+    async def get_agent_profile(self, user_id: str) -> Optional[dict]:
+        """Get user profile memory from profile-agent."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.profile_agent_url}/profile/{user_id}",
+                    timeout=5.0,
+                )
+                if response.status_code == 200:
+                    return response.json()
+        except Exception as e:
+            logger.warning(f"Error fetching profile-agent memory for {user_id}: {e}")
+        return None
+
+    def enrich_profile_with_agent_memory(self, base_profile: dict, agent_payload: Optional[dict]) -> dict:
+        """Merge profile-agent memory into auth profile shape expected by matching."""
+        if not agent_payload:
+            return base_profile
+
+        profile = dict(base_profile)
+        profile_memory = agent_payload.get("profile_memory") or {}
+        preference_memory = agent_payload.get("preference_memory") or {}
+
+        edad = profile_memory.get("edad") or profile_memory.get("age")
+        genero = profile_memory.get("genero") or profile_memory.get("gender")
+        bio = profile_memory.get("bio") or profile_memory.get("biography") or profile_memory.get("vibe_summary")
+        fotos = self._normalize_list(profile_memory.get("fotos") or profile_memory.get("photos"))
+
+        soft_interests = self._merge_unique_strings(
+            self._normalize_list(profile_memory.get("intereses") or profile_memory.get("interests")),
+            self._normalize_list(profile_memory.get("hobbies")),
+            self._normalize_list(profile_memory.get("favorite_environments")),
+            self._normalize_list(profile_memory.get("personality_traits")),
+        )
+
+        existing_interests = self._normalize_list(profile.get("intereses"))
+        merged_interests = self._merge_unique_strings(existing_interests, soft_interests)
+
+        existing_prefs = profile.get("preferencias") or {}
+        merged_preferences = {
+            "edad_minima": (
+                preference_memory.get("edad_minima")
+                or preference_memory.get("min_age")
+                or existing_prefs.get("edad_minima")
+                or 18
+            ),
+            "edad_maxima": (
+                preference_memory.get("edad_maxima")
+                or preference_memory.get("max_age")
+                or existing_prefs.get("edad_maxima")
+                or 65
+            ),
+            "distancia_maxima_km": (
+                preference_memory.get("distancia_maxima_km")
+                or preference_memory.get("max_distance_km")
+                or existing_prefs.get("distancia_maxima_km")
+                or self.max_distance
+            ),
+            "genero_preferido": (
+                preference_memory.get("genero_preferido")
+                or preference_memory.get("preferred_gender")
+                or existing_prefs.get("genero_preferido")
+            ),
+        }
+
+        location = profile_memory.get("ubicacion") or profile_memory.get("location") or profile.get("ubicacion")
+
+        if edad is not None:
+            profile["edad"] = edad
+        if genero:
+            profile["genero"] = genero
+        if bio:
+            profile["bio"] = bio
+        if fotos:
+            profile["fotos"] = fotos
+        if merged_interests:
+            profile["intereses"] = merged_interests
+        if location:
+            profile["ubicacion"] = location
+
+        profile["preferencias"] = merged_preferences
+        profile["agent_profile_completion"] = agent_payload.get("profile_completion")
+        profile["social_style"] = profile_memory.get("social_style")
+        profile["vibe_summary"] = profile_memory.get("vibe_summary")
+        profile["emotional_style"] = profile_memory.get("emotional_style")
+        profile["dislikes"] = self._normalize_list(profile_memory.get("dislikes"))
+
+        return profile
     
     async def get_user_profile(self, user_id: str) -> Optional[dict]:
-        """Get user profile from auth service"""
+        """Get user profile from auth service and enrich it with profile-agent memory."""
+        base_profile: Optional[dict] = None
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -45,10 +157,15 @@ class MatchingEngine:
                     timeout=5.0,
                 )
                 if response.status_code == 200:
-                    return response.json()
+                    base_profile = response.json()
         except Exception as e:
             logger.error(f"Error fetching user profile {user_id}: {e}")
-        return None
+
+        if not base_profile:
+            return None
+
+        agent_profile = await self.get_agent_profile(user_id)
+        return self.enrich_profile_with_agent_memory(base_profile, agent_profile)
 
     async def list_all_user_profiles(self) -> list[dict]:
         """List all active user profiles from auth service"""
@@ -165,6 +282,17 @@ class MatchingEngine:
                 interest_score = min(30, len(common_interests) * 5)
                 score += interest_score
                 reasons.append(f"Shared interests: {', '.join(list(common_interests)[:3])}")
+
+        # Soft-profile compatibility signals from profile-agent memory.
+        style_a = (user_a.get("social_style") or "").strip().lower()
+        style_b = (user_b.get("social_style") or "").strip().lower()
+        if style_a and style_b and style_a == style_b:
+            reasons.append("Compatible social style")
+
+        vibe_a = (user_a.get("vibe_summary") or "").strip()
+        vibe_b = (user_b.get("vibe_summary") or "").strip()
+        if vibe_a and vibe_b:
+            reasons.append("Both users have rich profile-agent memory")
         
         return min(100.0, score), reasons
     
@@ -213,20 +341,36 @@ class MatchingEngine:
 
         matches = []
         for candidate in candidates:
+            candidate_id = candidate.get("id")
+            if not candidate_id:
+                logger.warning(f"Candidate without id: {candidate}")
+                continue
+            candidate_id = str(candidate_id)
+            
+            candidate_profile = await self.get_user_profile(candidate_id)
+            if not candidate_profile:
+                logger.warning(f"Could not fetch profile for candidate {candidate_id}")
+                continue
+            candidate = candidate_profile
+
             candidate_location = await self.get_user_location(
-                str(candidate.get("id")),
+                candidate_id,
                 profile=candidate,
             )
-            score, reasons = await self.calculate_compatibility(
-                user, candidate, location, candidate_location
-            )
+            try:
+                score, reasons = await self.calculate_compatibility(
+                    user, candidate, location, candidate_location
+                )
 
-            if score >= self.min_score:
-                matches.append({
-                    "user_id": str(candidate.get("id")),
-                    "score": score,
-                    "reasons": reasons,
-                })
+                if score >= self.min_score:
+                    matches.append({
+                        "user_id": candidate_id,
+                        "score": score,
+                        "reasons": reasons,
+                    })
+            except Exception as e:
+                logger.error(f"Error calculating compatibility for candidate {candidate_id}: {e}")
+                continue
 
         # Sort by score descending
         matches.sort(key=lambda x: x["score"], reverse=True)

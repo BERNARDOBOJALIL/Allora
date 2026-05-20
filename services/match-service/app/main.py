@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from bson import ObjectId
 from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import settings
@@ -17,6 +18,7 @@ from app.schemas import (
     MatchListResponse,
     MatchResponse,
     MatchUpdateRequest,
+    PotentialMatchListResponse,
 )
 
 logging.basicConfig(
@@ -41,6 +43,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins (adjust in production)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # Dependency to get matching engine
 async def get_matching_engine(db: AsyncIOMotorDatabase = Depends(get_database)):
@@ -55,7 +66,7 @@ async def health_check():
 
 
 # Get potential matches for a user
-@app.get("/users/{user_id}/matches", response_model=MatchListResponse)
+@app.get("/users/{user_id}/matches", response_model=PotentialMatchListResponse)
 async def get_potential_matches(
     user_id: str,
     limit: int = Query(10, ge=1, le=100),
@@ -67,12 +78,12 @@ async def get_potential_matches(
     """
     try:
         matches = await engine.find_matches(user_id, limit=limit, skip=skip)
-        return MatchListResponse(total=len(matches), matches=matches)
+        return PotentialMatchListResponse(total=len(matches), matches=matches)
     except Exception as e:
         logger.error(f"Error finding matches for user {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error finding matches",
+            detail=f"Error finding matches: {str(e)}",
         )
 
 

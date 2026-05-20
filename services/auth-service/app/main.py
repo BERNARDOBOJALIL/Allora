@@ -392,6 +392,33 @@ async def list_users_for_matching(
         result.append(build_match_profile(user, profile))
     return result
 
+
+@app.get(
+    "/auth/users/{user_id}",
+    response_model=UserResponse,
+    response_model_exclude_none=True,
+)
+async def get_user_by_id(
+    user_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> UserResponse:
+    """
+    Endpoint protegido para obtener el perfil de un usuario por id.
+    Requiere autenticación (token Bearer). Devuelve los campos públicos
+    definidos en `UserResponse`.
+    """
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    require_active_user(user)
+
+    return build_user_response(user)
+
 @app.get("/auth/.well-known/jwks.json")
 async def jwks() -> dict[str, list[dict[str, str]]]:
     return get_jwks()

@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     mongodb_db: str = "match_service"
     auth_service_url: str = "http://auth-service:8000"
     location_service_url: str = "http://location-service:8003"
+    profile_agent_url: str = "https://alloraagent.onrender.com"
     log_level: str = "INFO"
     
     # Matching algorithm parameters

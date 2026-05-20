@@ -850,6 +850,34 @@ async def protected_proxy(
     )
 
 
+@app.api_route("/users/{user_id}/matches", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def user_potential_matches_proxy(
+    user_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_auth),
+):
+    return await protected_proxy(
+        request,
+        settings.matches_service_url,
+        f"users/{user_id}/matches",
+        user,
+    )
+
+
+@app.api_route("/users/{user_id}/all-matches", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def user_all_matches_proxy(
+    user_id: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_auth),
+):
+    return await protected_proxy(
+        request,
+        settings.matches_service_url,
+        f"users/{user_id}/all-matches",
+        user,
+    )
+
+
 @app.api_route("/users", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 @app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def users_proxy(
@@ -860,14 +888,38 @@ async def users_proxy(
     return await protected_proxy(request, settings.users_service_url, path, user)
 
 
+@app.post("/match")
+async def match_sync_compat_proxy(
+    request: Request,
+    user: dict[str, Any] = Depends(require_auth),
+):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    if isinstance(payload, dict) and payload.get("user_a_id") and payload.get("user_b_id"):
+        return await protected_proxy(request, settings.matches_service_url, "matches", user)
+
+    return {
+        "status": "ok",
+        "mode": "match_profile_sync",
+        "user_id": user["sub"],
+        "received_keys": sorted(payload.keys()) if isinstance(payload, dict) else [],
+    }
+
+
 @app.api_route("/matches", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 @app.api_route("/matches/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/match", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/match/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def matches_proxy(
     request: Request,
     path: str = "",
     user: dict[str, Any] = Depends(require_auth),
 ):
-    return await protected_proxy(request, settings.matches_service_url, path, user)
+    upstream_path = f"matches/{path}" if path else "matches"
+    return await protected_proxy(request, settings.matches_service_url, upstream_path, user)
 
 
 @app.api_route("/chat", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
