@@ -380,26 +380,35 @@ class MatchingEngine:
         self,
         user_a_id: str,
         user_b_id: str,
+        bypass_score: bool = False,
     ) -> Optional[dict]:
         """
-        Create a match between two users
+        Create a match between two users.
+        bypass_score=True skips the min_score gate (used for direct radar requests).
         """
-        # Get both users
+        # Get both users - fall back to minimal stub if profile service is unreachable
         user_a = await self.get_user_profile(user_a_id)
         user_b = await self.get_user_profile(user_b_id)
-        
-        if not user_a or not user_b:
-            logger.error(f"One or both users not found: {user_a_id}, {user_b_id}")
-            return None
-        
+
+        if not user_a:
+            logger.warning(f"Profile not found for user_a {user_a_id}, using stub")
+            user_a = {"id": user_a_id, "edad": 0, "genero": "", "intereses": [], "preferencias": {}}
+        if not user_b:
+            logger.warning(f"Profile not found for user_b {user_b_id}, using stub")
+            user_b = {"id": user_b_id, "edad": 0, "genero": "", "intereses": [], "preferencias": {}}
+
         # Get locations
         loc_a = await self.get_user_location(user_a_id)
         loc_b = await self.get_user_location(user_b_id)
-        
+
         # Calculate compatibility
-        score, reasons = await self.calculate_compatibility(user_a, user_b, loc_a, loc_b)
-        
-        if score < self.min_score:
+        try:
+            score, reasons = await self.calculate_compatibility(user_a, user_b, loc_a, loc_b)
+        except Exception as e:
+            logger.warning(f"Compatibility calculation failed, defaulting score to 0: {e}")
+            score, reasons = 0.0, ["Compatibility could not be calculated"]
+
+        if not bypass_score and score < self.min_score:
             logger.warning(f"Compatibility score too low: {score}")
             return None
         

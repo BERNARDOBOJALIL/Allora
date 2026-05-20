@@ -162,13 +162,13 @@ async def create_match(
                 detail="Match already exists between these users",
             )
         
-        # Create match
-        match = await engine.create_match(request.user_a_id, request.user_b_id)
-        
+        # Create match (bypass_score=True: direct user-initiated requests always proceed)
+        match = await engine.create_match(request.user_a_id, request.user_b_id, bypass_score=True)
+
         if not match:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not create match - compatibility score too low",
+                detail="Could not create match",
             )
         
         return MatchResponse(**serialize_match(match))

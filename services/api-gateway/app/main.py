@@ -791,7 +791,7 @@ async def me(user: dict[str, Any] = Depends(require_auth)) -> dict[str, Any]:
 
 @app.api_route(
     "/auth/{path}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 async def auth_proxy(path: str, request: Request):
     if path not in PUBLIC_AUTH_PATHS:
@@ -808,11 +808,11 @@ async def auth_proxy(path: str, request: Request):
 # Protected auth-related endpoints (onboarding/profile-memory)
 @app.api_route(
     "/auth/onboarding",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 @app.api_route(
     "/auth/onboarding/{path:path}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 async def auth_onboarding_proxy(request: Request, path: str = "", user: dict[str, Any] = Depends(require_auth)):
     upstream_path = f"auth/onboarding/{path}" if path else "auth/onboarding"
@@ -821,11 +821,11 @@ async def auth_onboarding_proxy(request: Request, path: str = "", user: dict[str
 
 @app.api_route(
     "/auth/profile-memory",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 @app.api_route(
     "/auth/profile-memory/{path:path}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 async def auth_profile_memory_proxy(request: Request, path: str = "", user: dict[str, Any] = Depends(require_auth)):
     upstream_path = f"auth/profile-memory/{path}" if path else "auth/profile-memory"
@@ -850,7 +850,7 @@ async def protected_proxy(
     )
 
 
-@app.api_route("/users/{user_id}/matches", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/users/{user_id}/matches", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def user_potential_matches_proxy(
     user_id: str,
     request: Request,
@@ -864,7 +864,7 @@ async def user_potential_matches_proxy(
     )
 
 
-@app.api_route("/users/{user_id}/all-matches", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/users/{user_id}/all-matches", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def user_all_matches_proxy(
     user_id: str,
     request: Request,
@@ -878,8 +878,8 @@ async def user_all_matches_proxy(
     )
 
 
-@app.api_route("/users", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/users", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def users_proxy(
     request: Request,
     path: str = "",
@@ -909,10 +909,10 @@ async def match_sync_compat_proxy(
     }
 
 
-@app.api_route("/matches", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@app.api_route("/matches/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@app.api_route("/match", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@app.api_route("/match/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/matches", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@app.api_route("/matches/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@app.api_route("/match", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@app.api_route("/match/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def matches_proxy(
     request: Request,
     path: str = "",
@@ -922,8 +922,8 @@ async def matches_proxy(
     return await protected_proxy(request, settings.matches_service_url, upstream_path, user)
 
 
-@app.api_route("/chat", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@app.api_route("/chat/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/chat", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@app.api_route("/chat/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def chat_proxy(
     request: Request,
     path: str = "",
@@ -932,8 +932,8 @@ async def chat_proxy(
     return await protected_proxy(request, settings.chat_service_url, path, user)
 
 
-@app.api_route("/location", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@app.api_route("/location/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/location", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@app.api_route("/location/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def location_proxy(
     request: Request,
     path: str = "",
@@ -943,7 +943,7 @@ async def location_proxy(
     return await protected_proxy(request, settings.location_service_url, upstream_path, user)
 
 
-@app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def location_compat_proxy(
     request: Request,
     path: str,
@@ -954,8 +954,8 @@ async def location_compat_proxy(
     return await protected_proxy(request, settings.location_service_url, upstream_path, user)
 
 
-@app.api_route("/profile", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@app.api_route("/profile/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/profile", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@app.api_route("/profile/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def profile_proxy(
     request: Request,
     path: str = "",
@@ -965,8 +965,8 @@ async def profile_proxy(
     return await protected_proxy(request, settings.users_service_url, upstream_path, user)
 
 
-@app.api_route("/preferences", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@app.api_route("/preferences/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/preferences", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@app.api_route("/preferences/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def preferences_proxy(
     request: Request,
     path: str = "",
