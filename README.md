@@ -429,6 +429,91 @@ DEV_RETURN_CODES=false
 - Manejo de cache y presencia con Redis
 - Comunicación en tiempo real mediante WebSockets
 
+
+---
+
+# Documentación adicional
+
+- [Pruebas del sistema](docs/pruebas.md)
+- [Fallas simuladas](docs/fallas-simuladas.md)
+
+---
+
+# Evidencias de Pruebas
+
+Durante el desarrollo de Allora se realizaron pruebas funcionales y de integración para validar el correcto funcionamiento de la arquitectura basada en microservicios.
+
+Las pruebas incluyeron:
+
+- Registro de usuarios.
+- Inicio de sesión.
+- Generación y validación de JWT.
+- Acceso a rutas protegidas.
+- Creación de conversaciones.
+- Envío de mensajes.
+- Presencia de usuarios en tiempo real.
+- Comunicación entre microservicios.
+- Persistencia de datos.
+- Publicación de eventos.
+
+## Documentación completa
+
+- [Pruebas del sistema](docs/pruebas.md)
+- [Fallas simuladas](docs/fallas-simuladas.md)
+
+## Evidencias
+
+### Estado de contenedores
+
+![Docker PS](docs/image.png)
+
+### Registro de usuario
+
+![Registro](docs/image-1.png)
+
+### Inicio de sesión
+
+![Login](docs/image-3.png)
+
+### Conversación creada
+
+![Conversación](docs/image-7.png)
+
+### Mensaje enviado
+
+![Mensaje](docs/image-8.png)
+
+---
+
+# Fallas Simuladas
+
+Se realizaron pruebas controladas para validar el manejo de errores y resiliencia del sistema.
+
+Las fallas simuladas incluyeron:
+
+- JWT inválido.
+- Requests inválidos.
+- Indisponibilidad temporal de servicios.
+- Validación automática mediante Pydantic.
+
+## Evidencias
+
+### Token inválido
+
+![Token inválido](docs/image-10.png)
+
+### Error de validación
+
+![Validation Error](docs/image-11.png)
+
+### Servicio temporalmente no disponible
+
+![Servicio no disponible](docs/image-12.png)
+
+## Resultado
+
+Las pruebas demostraron que la arquitectura puede responder de manera segura y controlada ante errores sin comprometer la estabilidad general del sistema.
+
 ---
 
 # Experiencias Aprendidas
@@ -438,9 +523,6 @@ DEV_RETURN_CODES=false
 A nivel tecnológico, este proyecto también me permitió aprender herramientas y enfoques modernos que antes no había aplicado en un proyecto tan completo. Uno de los aspectos más interesantes fue el uso de WebSockets para compartir la ubicación de los usuarios en tiempo real, comprendiendo cómo funciona la comunicación bidireccional y la sincronización instantánea de información entre clientes y servidor. También aprendí a integrar un agente inteligente utilizando LangGraph para la construcción conversacional de perfiles, explorando una forma innovadora de mejorar la experiencia del usuario mediante inteligencia artificial y flujos conversacionales. Más allá de la programación, este proyecto también me ayudó a desarrollar habilidades de trabajo en equipo, comunicación y resolución de problemas, ya que constantemente fue necesario colaborar, tomar decisiones técnicas y adaptarse a nuevos retos durante el proceso. En general, considero que esta experiencia fortaleció tanto mis conocimientos técnicos como mi capacidad para desarrollar soluciones más completas, escalables y pensadas para usuarios reales
 
 > — Roberto Villegas:Trabajar en mi proyecto de sistemas distribuidos me permitió tener un acercamiento más real a cómo funciona un entorno profesional de desarrollo de software. Aprendí la importancia de documentar correctamente el trabajo y utilizar control de versiones para facilitar la integración de servicios. También comprendí la relevancia de realizar pruebas E2E y unitarias para validar el funcionamiento del sistema, además de aprender a desarrollar funcionalidades con manejo de estados dinámicos y procesos que cambian constantemente.
-
-
-
 
 
 
