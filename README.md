@@ -420,17 +420,6 @@ DEV_RETURN_CODES=false
 
 ---
 
-# Evidencia de Pruebas
-
-- Validación de autenticación JWT
-- Comunicación entre microservicios
-- Publicación y consumo de eventos RabbitMQ
-- Persistencia en MongoDB y PostgreSQL
-- Manejo de cache y presencia con Redis
-- Comunicación en tiempo real mediante WebSockets
-
-
----
 
 # Documentación adicional
 
@@ -456,10 +445,6 @@ Las pruebas incluyeron:
 - Persistencia de datos.
 - Publicación de eventos.
 
-## Documentación completa
-
-- [Pruebas del sistema](docs/pruebas.md)
-- [Fallas simuladas](docs/fallas-simuladas.md)
 
 ## Evidencias
 
