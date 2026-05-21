@@ -6,13 +6,11 @@ from typing import Any
 class Role(StrEnum):
     USER = "USER"
     ADMIN = "ADMIN"
-    MODERATOR = "MODERATOR"
 
 
 class Plan(StrEnum):
     FREE = "FREE"
     PREMIUM = "PREMIUM"
-    PRO = "PRO"
 
 
 class VerificationPurpose(StrEnum):
